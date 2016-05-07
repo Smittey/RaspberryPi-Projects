@@ -1,5 +1,4 @@
 import argparse
-
 from apiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 
@@ -11,6 +10,12 @@ from oauth2client import tools
 import time
 import RPi.GPIO as GPIO
  
+import ConfigParser
+Config = ConfigParser.ConfigParser()
+Config.read("ga-config.ini")
+Config.sections()
+Config.options('config')
+
 DEBUG = True
 GPIO.setwarnings(False)
 GPIO.setmode(GPIO.BCM)
@@ -25,47 +30,20 @@ def get_service(api_name, api_version, scope, key_file_location, service_account
   http = credentials.authorize(httplib2.Http())
 
   # Build the service object.
-  service = build(api_name, 'v3', http=http)
+  service = build(api_name, api_version, http=http)
 
   return service
 
 
-def get_first_profile_id(service):
-
-  # Get a list of all Google Analytics accounts for this user
-  accounts = service.management().accounts().list().execute()
-
-  if accounts.get('items'):
-    
-    # Get the first Google Analytics account.
-    account = accounts.get('items')[0].get('id')
-
-    # Get a list of all the properties for the first account.
-    properties = service.management().webproperties().list(accountId=account).execute()
-
-    if properties.get('items'):
-      # Get the first property id.
-      property = properties.get('items')[0].get('id')
-
-      # Get a list of all views (profiles) for the first property.
-      profiles = service.management().profiles().list(accountId=account, webPropertyId=property).execute()
-
-      if profiles.get('items'):
-        # return the first view (profile) id.
-        return profiles.get('items')[0].get('id')
-
-  return None
-
 
 def get_results(service, profile_id):
-
-  return service.data().realtime().get(ids='ga:' + '117568134', metrics='rt:activeUsers').execute()
+  
+  return service.data().realtime().get(ids='ga:' + profile_id, metrics='rt:activeUsers').execute()
 
 
 def print_totals_for_all_results(results):
 
   totals = results.get('totalsForAllResults')
-
   
   for metric_name, metric_total in totals.iteritems():
     print 'Current Active Users = %s' % metric_total
@@ -79,17 +57,21 @@ def print_totals_for_all_results(results):
 
 def main():
 
-  scope = ['https://www.googleapis.com/auth/analytics.readonly']
-  service_account_email = 'rpi-835@raspberrypianalytics.iam.gserviceaccount.com'
-  key_file_location = '/home/pi/client_secrets.p12'
+  scope = Config.get('config', 'scope')
+  service_account_email = Config.get('config', 'service_account_email')
+  key_file_location = Config.get('config', 'key_file_location')
+  version = Config.get('config', 'version')
+  api_name = Config.get('config', 'api_name')
+  analytics_id = Config.get('config', 'analytics_id')
+  
   # Authenticate and construct service.
-  service = get_service('analytics', 'v3', scope, key_file_location, service_account_email)
+  service = get_service(api_name, version, scope, key_file_location, service_account_email)
 
   try:
     while True:
-      profile = get_first_profile_id(service)
-      print_totals_for_all_results(get_results(service, profile))
-      time.sleep(10)
+      #profile = get_first_profile_id(service)
+      print_totals_for_all_results(get_results(service, analytics_id))
+      time.sleep(1)
   finally:
       print "cleaning up"
       GPIO.cleanup()
